@@ -1,43 +1,25 @@
-"""WSGI entry point for production servers."""
+"""Simple WSGI entry point for aappsap."""
 
-import os
 from flask import Flask, jsonify
 
-# Create Flask app directly
-app = Flask(__name__)
+application = app = Flask(__name__)
 
 
-# Health check
-@app.route("/health", methods=["GET"])
+@app.route("/")
+def index():
+    return jsonify({"service": "aappsap", "version": "1.0.0", "status": "running"})
+
+
+@app.route("/health")
 def health():
-    return jsonify({"status": "healthy", "service": "aappsap"}), 200
+    return jsonify({"status": "healthy"})
 
 
-# Ready check
-@app.route("/ready", methods=["GET"])
+@app.route("/ready")
 def ready():
-    return jsonify({"status": "ready", "service": "aappsap"}), 200
+    return jsonify({"status": "ready"})
 
 
-# Test endpoint
-@app.route("/api/v1/test", methods=["GET"])
+@app.route("/api/v1/test")
 def test():
-    return jsonify(
-        {"message": "Hello from aappsap!", "status": "operational", "version": "1.0.0"}
-    ), 200
-
-
-# Root endpoint
-@app.route("/", methods=["GET"])
-def root():
-    return jsonify(
-        {
-            "service": "aappsap API",
-            "version": "1.0.0",
-            "endpoints": ["/health", "/ready", "/api/v1/test"],
-        }
-    ), 200
-
-
-if __name__ == "__main__":
-    app.run()
+    return jsonify({"message": "Hello from aappsap!", "status": "operational"})
