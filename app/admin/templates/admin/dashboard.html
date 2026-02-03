@@ -1,0 +1,199 @@
+{% extends "admin/base.html" %}
+
+{% block content %}
+<div id="login-section" class="login-prompt" style="display: none;">
+    <h2>Admin Login</h2>
+    <input type="email" id="email" placeholder="Email" value="admin@test.com">
+    <br>
+    <input type="password" id="password" placeholder="Password" value="admin123">
+    <br>
+    <button onclick="login()">Login</button>
+    <p id="login-error" style="color: red; margin-top: 1rem;"></p>
+</div>
+
+<div id="dashboard-content" style="display: none;">
+    <!-- Stats Cards -->
+    <div class="stats-grid">
+        <div class="stat-card sales">
+            <h3>Sales Today</h3>
+            <div class="value" id="sales-today">$0.00</div>
+            <small>This week: <span id="sales-week">$0.00</span></small>
+        </div>
+        <div class="stat-card orders">
+            <h3>Orders Today</h3>
+            <div class="value" id="orders-today">0</div>
+            <small>Pending: <span id="orders-pending">0</span></small>
+        </div>
+        <div class="stat-card inventory">
+            <h3>Low Stock</h3>
+            <div class="value" id="low-stock">0</div>
+            <small>Products need attention</small>
+        </div>
+        <div class="stat-card users">
+            <h3>New Users</h3>
+            <div class="value" id="new-users">0</div>
+            <small>Total: <span id="total-users">0</span></small>
+        </div>
+    </div>
+
+    <!-- Charts -->
+    <div class="charts-grid">
+        <div class="chart-card">
+            <h3>Sales (Last 30 Days)</h3>
+            <canvas id="salesChart" height="200"></canvas>
+        </div>
+        <div class="chart-card">
+            <h3>Order Status</h3>
+            <canvas id="ordersChart" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- Recent Orders -->
+    <div class="recent-orders">
+        <h3>Recent Orders</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Order #</th>
+                    <th>Customer</th>
+                    <th>Total</th>
+                    <th>Status</th>
+                    <th>Date</th>
+                </tr>
+            </thead>
+            <tbody id="orders-table-body"></tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+let salesChart, ordersChart;
+
+function checkAuth() {
+    const token = localStorage.getItem('access_token');
+    if (!token) {
+        document.getElementById('login-section').style.display = 'block';
+        document.getElementById('dashboard-content').style.display = 'none';
+    } else {
+        document.getElementById('login-section').style.display = 'none';
+        document.getElementById('dashboard-content').style.display = 'block';
+        loadDashboard();
+    }
+}
+
+async function login() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+    
+    try {
+        const response = await fetch('/api/v1/auth/login', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({email, password})
+        });
+        
+        const data = await response.json();
+        
+        if (response.ok) {
+            localStorage.setItem('access_token', data.access_token);
+            checkAuth();
+        } else {
+            document.getElementById('login-error').textContent = data.error || 'Login failed';
+        }
+    } catch (err) {
+        document.getElementById('login-error').textContent = 'Network error';
+    }
+}
+
+async function loadDashboard() {
+    const token = localStorage.getItem('access_token');
+    const headers = {'Authorization': `Bearer ${token}`};
+    
+    try {
+        // Load stats
+        const stats = await fetch('/admin/api/stats', {headers}).then(r => r.json());
+        document.getElementById('sales-today').textContent = `$${stats.sales.today.toFixed(2)}`;
+        document.getElementById('sales-week').textContent = `$${stats.sales.week.toFixed(2)}`;
+        document.getElementById('orders-today').textContent = stats.orders.today;
+        document.getElementById('orders-pending').textContent = stats.orders.pending;
+        document.getElementById('low-stock').textContent = stats.inventory.low_stock;
+        document.getElementById('new-users').textContent = stats.users.new_today;
+        document.getElementById('total-users').textContent = stats.users.total;
+        
+        // Load sales chart
+        const salesData = await fetch('/admin/api/chart/sales', {headers}).then(r => r.json());
+        if (salesChart) salesChart.destroy();
+        salesChart = new Chart(document.getElementById('salesChart'), {
+            type: 'line',
+            data: {
+                labels: salesData.labels,
+                datasets: [{
+                    label: 'Sales ($)',
+                    data: salesData.data,
+                    borderColor: '#4CAF50',
+                    backgroundColor: 'rgba(76, 175, 80, 0.1)',
+                    tension: 0.1,
+                    fill: true
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {legend: {display: false}},
+                scales: {y: {beginAtZero: true}}
+            }
+        });
+        
+        // Load orders chart
+        const ordersData = await fetch('/admin/api/chart/orders', {headers}).then(r => r.json());
+        if (ordersChart) ordersChart.destroy();
+        ordersChart = new Chart(document.getElementById('ordersChart'), {
+            type: 'doughnut',
+            data: {
+                labels: ordersData.labels,
+                datasets: [{
+                    data: ordersData.data,
+                    backgroundColor: ['#4CAF50', '#FFC107', '#F44336', '#2196F3', '#9C27B0']
+                }]
+            },
+            options: {
+                responsive: true,
+                plugins: {legend: {position: 'right'}}
+            }
+        });
+        
+        // Load recent orders
+        const recent = await fetch('/admin/api/recent-orders', {headers}).then(r => r.json());
+        const tbody = document.getElementById('orders-table-body');
+        tbody.innerHTML = recent.orders.map(o => `
+            <tr>
+                <td>${o.order_number}</td>
+                <td>${o.customer}</td>
+                <td>$${o.total.toFixed(2)}</td>
+                <td><span class="status ${o.status}">${o.status}</span></td>
+                <td>${new Date(o.date).toLocaleString()}</td>
+            </tr>
+        `).join('');
+        
+    } catch (err) {
+        console.error('Failed to load dashboard:', err);
+        if (err.message.includes('401') || err.message.includes('403')) {
+            localStorage.removeItem('access_token');
+            checkAuth();
+        }
+    }
+}
+
+// Auto-refresh every 30 seconds
+setInterval(() => {
+    if (localStorage.getItem('access_token')) {
+        loadDashboard();
+    }
+}, 30000);
+
+// Initial load
+checkAuth();
+</script>
+{% endblock %}
